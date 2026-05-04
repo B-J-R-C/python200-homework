@@ -187,6 +187,27 @@ the tree will just make the same split using the new scaled number . The resulti
 """
 
 
+# Logistic Regression and Regularization - ommision corrected
+
+print("\n--- Logistic Regression and Regularization ---")
+
+C_values = [0.01, 1.0, 100]
+
+for c in C_values:
+    log_reg = LogisticRegression(C=c, max_iter=1000, random_state=42)
+    log_reg.fit(X_train_scaled, y_train)
+    
+    coef_magnitude = np.abs(log_reg.coef_).sum()
+    print(f"C={c:5.2f} | Total Coefficient Magnitude: {coef_magnitude:.4f}")
+
+"""
+COMMENT: How does total coefficient magnitude change with regularization?
+In scikit-learn, C is the inverse of regularisation strength therefore smaller C = stronger penalty. 
+As C decreases, the total magnitude of the coefficients 
+shrinks a lot. The model is penalized for having large weights, which forces it 
+to shrink less important feature weights down toward zero, reducing overfitting.
+"""
+
 # Principal Component Analysis (PCA)
 
 print("\n--- PCA Setup ---")

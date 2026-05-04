@@ -193,13 +193,13 @@ legitimate emails to the spam folder.
 """
 
 # Feature Importances (Tree vs Forest)
-print("\nTop 5 Features (Decision Tree):")
+print("\nTop 10 Features (Decision Tree):")
 dt_importances = pd.Series(best_dt.feature_importances_, index=X.columns).sort_values(ascending=False)
-print(dt_importances.head())
+print(dt_importances.head(10))
 
-print("\nTop 5 Features (Random Forest):")
+print("\nTop 10 Features (Random Forest):")
 rf_importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=False)
-print(rf_importances.head())
+print(rf_importances.head(10))
 
 # Save Bar Chart
 plt.figure(figsize=(10, 6))
@@ -212,26 +212,33 @@ plt.clf()
 
 
 
+# ==========================================
 # TASK 4: Cross-Validation
-
+# ==========================================
 print("\n--- TASK 4: Cross-Validation ---")
 
-models_to_cv = {
-    "KNN (Scaled)": KNeighborsClassifier(n_neighbors=5),
-    "Decision Tree (d=10)": DecisionTreeClassifier(max_depth=10, random_state=42),
-    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
-    "Logistic Reg (Scaled)": LogisticRegression(C=1.0, max_iter=1000, solver='liblinear')
-}
+# We use a list of tuples: (Name, Model, X_data_to_use)
+models_to_cv = [
+    ("KNN (Unscaled)", KNeighborsClassifier(n_neighbors=5), X_train),
+    ("KNN (Scaled)", KNeighborsClassifier(n_neighbors=5), X_train_scaled),
+    ("KNN (PCA)", KNeighborsClassifier(n_neighbors=5), X_train_pca),
+    ("Decision Tree (d=10)", DecisionTreeClassifier(max_depth=10, random_state=42), X_train),
+    ("Random Forest", RandomForestClassifier(n_estimators=100, random_state=42), X_train),
+    ("Logistic Reg (Scaled)", LogisticRegression(C=1.0, max_iter=1000, solver='liblinear'), X_train_scaled),
+    ("Logistic Reg (PCA)", LogisticRegression(C=1.0, max_iter=1000, solver='liblinear'), X_train_pca)
+]
 
-for name, model in models_to_cv.items():
-    scores = cross_val_score(model, X_train_scaled, y_train, cv=5)
-    print(f"{name:20s} | Mean CV Acc: {scores.mean():.4f} | Std Dev: {scores.std():.4f}")
+for name, model, x_data in models_to_cv:
+    scores = cross_val_score(model, x_data, y_train, cv=5)
+    print(f"{name:25s} | Mean CV Acc: {scores.mean():.4f} | Std Dev: {scores.std():.4f}")
 
 """
 COMMENT: CV Results
-Random Forest is both the highest mean AND the most stable 
-(lowest standard deviation). It consistently performs well across every fold. 
-
+Random Forest is still most accurate (highest mean) and most stable (lowest standard 
+deviation) across the board. Now that we tested all models properly, we can clearly see 
+the massive jump in performance KNN gets when moving from Unscaled to Scaled. 
+The ranking holds true: Random Forest reigns supreme, LogReg is second, and Unscaled 
+KNN is severely hindered by the different feature magnitudes.
 """
 
 
