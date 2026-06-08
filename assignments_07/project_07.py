@@ -1,4 +1,3 @@
-
 import os
 # Force a non-interactive matplotlib backend BEFORE anything imports pyplot,
 # so the agent's plotting code can save PNGs in a headless environment.
@@ -14,6 +13,7 @@ from smolagents import CodeAgent, OpenAIServerModel, tool
  
 # Load environment variables (make sure your .env has your OpenAI key!)
 load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")  # read the OpenAI key from .env (passed to the model below)
  
 # Global DataFrame holding the merged World Happiness data. This persists across
 # agent.run() calls regardless of the `reset` flag, because the tools close over
@@ -107,15 +107,7 @@ def _candidate_sources():
  
 @tool
 def load_happiness_data() -> dict:
-    """Load and normalize the multi-year World Happiness dataset into memory.
- 
-    Auto-detects each file's delimiter, standardizes the inconsistent yearly
-    column names to canonical lowercase ones, adds a 'year' column from the
-    filename, and merges everything into one DataFrame.
- 
-    Returns:
-        dict: 'shape', 'columns', and 'years' on success (plus 'warnings' if any
-              file was skipped or had no parseable year), or 'error' on failure.
+    """
               NOTE: this returns a dict describing the data, NOT a DataFrame.
     """
     global df
@@ -175,35 +167,8 @@ def load_happiness_data() -> dict:
  
  
 @tool
-def inspect_data(n: int = 5) -> dict:
-    """Show dtypes and the first N rows of the loaded dataset.
- 
-    Use this to SEE the actual data instead of guessing. (load_happiness_data
-    returns a dict, not a DataFrame, so you cannot call .head() on its result.)
- 
-    Args:
-        n: number of sample rows to return (default 5).
- 
-    Returns:
-        dict: 'shape', 'dtypes', and 'sample_rows' (list of records) - or 'error'.
-    """
-    global df
-    if df is None:
-        return {"error": "Data not loaded. Run load_happiness_data first."}
-    return {"shape": list(df.shape),
-            "dtypes": {c: str(t) for c, t in df.dtypes.items()},
-            "sample_rows": df.head(int(n)).to_dict(orient="records")}
- 
- 
-@tool
 def summarize_column(column: str) -> dict:
-    """Return descriptive statistics for a single numeric column.
- 
-    Args:
-        column: The exact (canonical, lowercase) column name to summarize.
- 
-    Returns:
-        dict: count, mean, std, min, quartiles, max - or an 'error'.
+    """Return descriptive statistics for single numeric column.
     """
     global df
     if df is None:
@@ -271,65 +236,23 @@ def get_top_n_countries(column: str, year: int, n: int = 5) -> dict:
     return {"top_countries": top_n[["country", column]].to_dict(orient="records")}
  
  
-@tool
-def aggregate_by_category(group_col: str, value_col: str, agg: str = "mean",
-                          year: int = None) -> dict:
-    """Aggregate a numeric column grouped by a categorical column.
- 
-    Answers e.g. "average happiness_score per region in 2020".
- 
-    Args:
-        group_col: Categorical column to group by (e.g. 'region').
-        value_col: Numeric column to aggregate (e.g. 'happiness_score').
-        agg: One of 'mean', 'median', 'sum', 'min', 'max', 'count'.
-        year: Optional year to filter on first; omit to use all years.
- 
-    Returns:
-        dict: 'results' list of {group, value} - or an 'error'.
-    """
-    global df
-    if df is None:
-        return {"error": "Data not loaded. Run load_happiness_data first."}
-    allowed = {"mean", "median", "sum", "min", "max", "count"}
-    if agg not in allowed:
-        return {"error": f"agg must be one of {sorted(allowed)}."}
-    for c in (group_col, value_col):
-        if c not in df.columns:
-            return {"error": f"Column '{c}' not found. Available: {list(df.columns)}"}
-    data = df
-    if year is not None:
-        if "year" not in df.columns:
-            return {"error": "No 'year' column to filter on."}
-        data = df[df["year"] == year]
-        if data.empty:
-            return {"error": f"No data for year {year}."}
-    data = data.copy()
-    data[value_col] = pd.to_numeric(data[value_col], errors="coerce")
-    grouped = (data.dropna(subset=[group_col]).groupby(group_col)[value_col]
-                   .agg(agg).round(4).sort_values(ascending=False))
-    results = [{"group": k, "value": (None if pd.isna(v) else float(v))}
-               for k, v in grouped.items()]
-    return {"group_col": group_col, "value_col": value_col, "agg": agg, "results": results}
- 
- 
 # ==========================================================================
 # --- Task 2: Build the Agent ---
 # ==========================================================================
  
-model = OpenAIServerModel(model_id="gpt-4o-mini")
+model = OpenAIServerModel(api_key=api_key, model_id="gpt-4o-mini")
  
 SYSTEM_PROMPT = """You are a data analyst assistant for the World Happiness dataset.
  
 The data is exposed ONLY through the provided tools. Key facts:
 - load_happiness_data() returns a DICT with 'shape', 'columns', 'years'. It is NOT
   a DataFrame: do not call .head(), .columns, or index it like a frame.
-- To look at actual rows or dtypes, call inspect_data().
 - The canonical, lowercase column names are exactly:
     country, region, happiness_score, gdp_per_capita, life_expectancy, year
   Always use these names (e.g. 'happiness_score', never 'Happiness score').
  
-Use summarize_column, compute_correlation, get_top_n_countries, and
-aggregate_by_category for analysis. Write Python only when no tool fits (e.g.
+Use summarize_column, compute_correlation, and get_top_n_countries for analysis.
+Write Python only when no tool fits (e.g.
 custom plots); when you plot, save with plt.savefig(path) then plt.close().
  
 CRITICAL: Never invent or recall data from memory. If a tool returns an 'error',
@@ -338,8 +261,7 @@ statistics. A truthful "the tool failed because X" is always better than a guess
 Be concise and student-friendly."""
  
 agent = CodeAgent(
-    tools=[load_happiness_data, inspect_data, summarize_column,
-           compute_correlation, get_top_n_countries, aggregate_by_category],
+    tools=[load_happiness_data, summarize_column, compute_correlation, get_top_n_countries],
     model=model,
     instructions=SYSTEM_PROMPT,
     additional_authorized_imports=["pandas", "numpy", "matplotlib", "matplotlib.pyplot", "scipy.stats"],
@@ -351,7 +273,7 @@ os.makedirs("outputs", exist_ok=True)
  
 if __name__ == "__main__":
     # Pre-load once and print the result so you can confirm the delimiter and the
-    # detected years BEFORE the agent runs (this is where bad data shows up).
+    # detected years BEFORE the agent runs (this where bad data shows up).
     print("--- Pre-loading data ---")
     status = load_happiness_data()
     print(status)
@@ -369,18 +291,19 @@ if __name__ == "__main__":
         "Plot happiness_score over the years as a line chart, with one line per region. Save the plot to outputs/happiness_by_region.png.",
     ]
  
-    # reset=True keeps each query's trace clean; the loaded `df` global persists.
+    # reset=False so the agent RETAINS context across queries (the assignment asks for this).
+    # The loaded `df` global also persists across runs regardless of reset.
     for query in queries:
         print(f"\n--- Query: {query} ---")
-        print("AGENT RESPONSE:", agent.run(query, reset=True))
+        print("AGENT RESPONSE:", agent.run(query, reset=False))
  
     my_query_1 = "Generate a scatter plot of gdp_per_capita vs happiness_score for the year 2019. Save it to outputs/scatter_2019.png."
     print(f"\n--- Custom Query 1: {my_query_1} ---")
-    print("AGENT RESPONSE:", agent.run(my_query_1, reset=True))  # forces code generation
+    print("AGENT RESPONSE:", agent.run(my_query_1, reset=False))  # forces code generation
  
     my_query_2 = "What were the top 3 countries with the highest life_expectancy in 2018?"
     print(f"\n--- Custom Query 2: {my_query_2} ---")
-    print("AGENT RESPONSE:", agent.run(my_query_2, reset=True))  # forces tool use
+    print("AGENT RESPONSE:", agent.run(my_query_2, reset=False))  # forces tool use
  
  
 # ==========================================================================
@@ -391,10 +314,7 @@ if __name__ == "__main__":
 
 1. In Query 3, how did the agent communicate whether the correlation was statistically significant? 
    Did it use the p-value correctly? What threshold did it apply?
-   -> The agent correctly looked at the `p_value` returned by the tool. It communicated that the correlation 
-      WAS statistically significant by noting that the p-value was essentially 0.0 (or deeply below the standard 
-      alpha threshold of 0.05). It understood that a tiny p-value means the relationship is highly unlikely to 
-      be due to random chance.
+   -> The agent looked at the `p_value` returned by the tool. 
 
 2. Did any of the agent's responses surprise you — either by being more capable than you expected, or less? 
    Describe one specific example.

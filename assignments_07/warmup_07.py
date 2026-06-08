@@ -153,20 +153,20 @@ class CsvManager:
         Returns the correlation coefficient and p-value.
         """
         if self.df is None:
-            return json.dumps({"error": "No CSV loaded."})
+            return {"error": "No CSV loaded."}
         if col1 not in self.df.columns or col2 not in self.df.columns:
-            return json.dumps({"error": f"Columns {col1} or {col2} not found."})
+            return {"error": f"Columns {col1} or {col2} not found."}
         
         # Drop NAs to prevent math errors
         valid_data = self.df[[col1, col2]].dropna()
         r, p = pearsonr(valid_data[col1], valid_data[col2])
         
-        return json.dumps({
+        return {
             "col1": col1,
             "col2": col2,
             "pearson_r": round(float(r), 4),
             "p_value": round(float(p), 4)
-        })
+        }
 
 csv_manager = CsvManager()
 
@@ -254,7 +254,7 @@ print(json.dumps(cycle_messages, indent=2, default=str))
 
 # Q7: smolagents @tool Decorator
 @tool
-def compute_correlation_tool(col1: str, col2: str) -> str:
+def compute_correlation_tool(col1: str, col2: str) -> dict:
     """
     Compute the Pearson correlation between two columns in the loaded DataFrame.
     Returns the correlation coefficient and p-value.
